@@ -53,7 +53,6 @@ void main() {
 const FS_COMPOSITE = `#version 300 es
 precision highp float;
 in vec2 v_uv;
-uniform sampler2D u_scene;
 uniform sampler2D u_bloom;
 uniform float u_intensity;
 uniform float u_frostPulse;
@@ -61,33 +60,39 @@ uniform float u_dangerPulse;
 out vec4 fragColor;
 
 void main() {
-  vec4 scene = texture(u_scene, v_uv);
   vec3 bloom = texture(u_bloom, v_uv).rgb;
-
-  vec3 hdr = scene.rgb + bloom * (0.58 * u_intensity);
-  vec3 rolloff = hdr / (vec3(1.0) + max(vec3(0.0), hdr - vec3(0.88)) * 0.45);
-  vec3 color = mix(hdr, rolloff, 0.72);
 
   vec2 centered = v_uv * 2.0 - 1.0;
   float distSq = dot(centered, centered);
-  float edgeFactor = smoothstep(0.42, 1.55, distSq);
+  float edgeFactor = smoothstep(0.55, 1.65, distSq);
 
-  // Subtle dark bastion vignette
-  color *= mix(1.0, 0.86, edgeFactor * 0.65);
+  // Subtle dark bastion perimeter vignette (alpha stays 0.0 across center arena)
+  float darkAlpha = edgeFactor * 0.22;
+  vec3 tintRgb = vec3(0.015, 0.02, 0.035) * darkAlpha;
+  float tintAlpha = darkAlpha;
 
   // Sanctuary frost edge vignette
   if (u_frostPulse > 0.001) {
-    float frostRim = smoothstep(0.55, 1.48, distSq) * clamp(u_frostPulse, 0.0, 1.0);
-    color = mix(color, vec3(0.45, 0.82, 0.99), frostRim * 0.42);
+    float frostRim = smoothstep(0.55, 1.48, distSq) * clamp(u_frostPulse, 0.0, 1.0) * 0.42;
+    tintRgb = tintRgb * (1.0 - frostRim) + vec3(0.45, 0.82, 0.99) * frostRim;
+    tintAlpha = tintAlpha * (1.0 - frostRim) + frostRim;
   }
 
   // Danger edge vignette
   if (u_dangerPulse > 0.001) {
-    float dangerRim = smoothstep(0.48, 1.42, distSq) * clamp(u_dangerPulse, 0.0, 1.0);
-    color = mix(color, vec3(0.95, 0.18, 0.24), dangerRim * 0.48);
+    float dangerRim = smoothstep(0.48, 1.42, distSq) * clamp(u_dangerPulse, 0.0, 1.0) * 0.48;
+    tintRgb = tintRgb * (1.0 - dangerRim) + vec3(0.95, 0.18, 0.24) * dangerRim;
+    tintAlpha = tintAlpha * (1.0 - dangerRim) + dangerRim;
   }
 
-  fragColor = vec4(clamp(color, 0.0, 1.0), scene.a);
+  // Premultiplied additive bloom with gentle highlight rolloff
+  vec3 bloomAdd = bloom * (0.48 * u_intensity);
+  bloomAdd = bloomAdd / (vec3(1.0) + max(vec3(0.0), bloomAdd - vec3(0.45)) * 0.65);
+
+  vec3 outRgb = clamp(tintRgb + bloomAdd, 0.0, 1.0);
+  float outAlpha = clamp(tintAlpha, 0.0, 1.0);
+
+  fragColor = vec4(outRgb, outAlpha);
 }
 `;
 
@@ -96,8 +101,9 @@ function clamp(v, min, max) {
 }
 
 /**
- * Half-resolution WebGL2 dual-pass bloom & frost/danger vignette compositor
- * with automatic context-loss recovery and graceful Canvas2D fallback.
+ * Transparent half-CSS-resolution WebGL2 additive bloom & frost/danger vignette
+ * overlay with quarter-res Canvas2D downsample upload, context-loss recovery,
+ * and transparent Canvas2D gradient fallback.
  */
 export class PostFxCompositor {
   constructor(webglCanvas = null) {
@@ -110,8 +116,14 @@ export class PostFxCompositor {
     this._dpr = 1;
     this._pixelWidth = 1280;
     this._pixelHeight = 720;
-    this._halfWidth = 640;
-    this._halfHeight = 360;
+    this._outWidth = 640;
+    this._outHeight = 360;
+    this._bloomWidth = 0;
+    this._bloomHeight = 0;
+    this._hasResized = false;
+
+    this._downsampleCanvas = null;
+    this._downsampleCtx = null;
 
     this._shaderErrors = false;
     this._contextLost = false;
@@ -140,6 +152,8 @@ export class PostFxCompositor {
 
     this._onContextRestored = () => {
       this._contextLost = false;
+      this._bloomWidth = 0;
+      this._bloomHeight = 0;
       this._initWebGL();
       this._allocateTargets();
     };
@@ -153,11 +167,11 @@ export class PostFxCompositor {
       let gl = null;
       try {
         gl = this.canvas.getContext('webgl2', {
-          alpha: false,
+          alpha: true,
           antialias: false,
           depth: false,
           stencil: false,
-          premultipliedAlpha: false,
+          premultipliedAlpha: true,
           preserveDrawingBuffer: false,
         });
       } catch {
@@ -255,7 +269,6 @@ export class PostFxCompositor {
       extractTexel: gl.getUniformLocation(this._progExtract, 'u_texelSize'),
       blurTex: gl.getUniformLocation(this._progBlur, 'u_tex'),
       blurOffset: gl.getUniformLocation(this._progBlur, 'u_texelOffset'),
-      compScene: gl.getUniformLocation(this._progComposite, 'u_scene'),
       compBloom: gl.getUniformLocation(this._progComposite, 'u_bloom'),
       compIntensity: gl.getUniformLocation(this._progComposite, 'u_intensity'),
       compFrost: gl.getUniformLocation(this._progComposite, 'u_frostPulse'),
@@ -281,6 +294,8 @@ export class PostFxCompositor {
     this._bloomTexB = this._createLinearTexture(gl);
     this._fboA = gl.createFramebuffer();
     this._fboB = gl.createFramebuffer();
+    this._bloomWidth = 0;
+    this._bloomHeight = 0;
 
     this._ready = true;
   }
@@ -295,20 +310,51 @@ export class PostFxCompositor {
     return tex;
   }
 
-  _allocateTargets() {
+  _ensureDownsampleCanvas(w, h) {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+      return;
+    }
+    if (!this._downsampleCanvas) {
+      this._downsampleCanvas = document.createElement('canvas');
+      try {
+        this._downsampleCtx =
+          this._downsampleCanvas.getContext('2d', { alpha: false }) ||
+          this._downsampleCanvas.getContext('2d');
+      } catch {
+        this._downsampleCtx = null;
+      }
+    }
+    if (this._downsampleCanvas.width !== w) {
+      this._downsampleCanvas.width = w;
+    }
+    if (this._downsampleCanvas.height !== h) {
+      this._downsampleCanvas.height = h;
+    }
+  }
+
+  _allocateTargets(qW = 0, qH = 0) {
+    const targetW = qW > 0 ? qW : Math.max(64, Math.min(320, Math.floor(this._pixelWidth * 0.25)));
+    const targetH = qH > 0 ? qH : Math.max(64, Math.min(200, Math.floor(this._pixelHeight * 0.25)));
+
+    this._ensureDownsampleCanvas(targetW, targetH);
+
     const gl = this.gl;
     if (!gl || !this._ready || this._contextLost) return;
+    if (this._bloomWidth === targetW && this._bloomHeight === targetH) return;
 
-    this._halfWidth = Math.max(1, Math.floor(this._pixelWidth * 0.5));
-    this._halfHeight = Math.max(1, Math.floor(this._pixelHeight * 0.5));
+    this._bloomWidth = targetW;
+    this._bloomHeight = targetH;
+
+    gl.bindTexture(gl.TEXTURE_2D, this._sceneTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, targetW, targetH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
     gl.bindTexture(gl.TEXTURE_2D, this._bloomTexA);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this._halfWidth, this._halfHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, targetW, targetH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._fboA);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._bloomTexA, 0);
 
     gl.bindTexture(gl.TEXTURE_2D, this._bloomTexB);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this._halfWidth, this._halfHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, targetW, targetH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._fboB);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._bloomTexB, 0);
 
@@ -326,13 +372,20 @@ export class PostFxCompositor {
     this._dpr = clampedDpr;
     this._pixelWidth = Math.max(1, Math.round(validW * clampedDpr));
     this._pixelHeight = Math.max(1, Math.round(validH * clampedDpr));
+    this._outWidth = Math.max(120, Math.floor(validW * 0.5));
+    this._outHeight = Math.max(80, Math.floor(validH * 0.5));
+    this._hasResized = true;
 
     if (this.canvas) {
-      if (this.canvas.width !== this._pixelWidth) this.canvas.width = this._pixelWidth;
-      if (this.canvas.height !== this._pixelHeight) this.canvas.height = this._pixelHeight;
+      if (this.canvas.width !== this._outWidth) this.canvas.width = this._outWidth;
+      if (this.canvas.height !== this._outHeight) this.canvas.height = this._outHeight;
     }
 
-    this._allocateTargets();
+    const qW = Math.max(64, Math.min(320, Math.floor(this._pixelWidth * 0.25)));
+    const qH = Math.max(64, Math.min(200, Math.floor(this._pixelHeight * 0.25)));
+    if (qW !== this._bloomWidth || qH !== this._bloomHeight) {
+      this._allocateTargets(qW, qH);
+    }
   }
 
   render(sourceCanvas2D, intensity = 1, frostPulse = 0, dangerPulse = 0) {
@@ -357,33 +410,49 @@ export class PostFxCompositor {
     const srcH = sourceCanvas2D.height || this._pixelHeight;
     if (srcW <= 0 || srcH <= 0) return false;
 
-    if (srcW !== this._pixelWidth || srcH !== this._pixelHeight) {
-      this._pixelWidth = srcW;
-      this._pixelHeight = srcH;
-      if (this.canvas) {
-        this.canvas.width = srcW;
-        this.canvas.height = srcH;
-      }
-      this._allocateTargets();
+    if (!this._hasResized && this.canvas) {
+      this._outWidth = Math.max(120, Math.floor(srcW * 0.5));
+      this._outHeight = Math.max(80, Math.floor(srcH * 0.5));
+      if (this.canvas.width !== this._outWidth) this.canvas.width = this._outWidth;
+      if (this.canvas.height !== this._outHeight) this.canvas.height = this._outHeight;
     }
 
-    // Upload 2D scene canvas to WebGL texture
+    const qW = Math.max(64, Math.min(320, Math.floor(srcW * 0.25)));
+    const qH = Math.max(64, Math.min(200, Math.floor(srcH * 0.25)));
+    if (qW !== this._bloomWidth || qH !== this._bloomHeight) {
+      this._allocateTargets(qW, qH);
+    }
+
+    const outW = this.canvas ? (this.canvas.width || this._outWidth) : this._outWidth;
+    const outH = this.canvas ? (this.canvas.height || this._outHeight) : this._outHeight;
+    if (outW <= 0 || outH <= 0) return false;
+
+    // Downsample 2D scene canvas into tiny scratch canvas, then fast-upload via texSubImage2D
+    const dsCanvas = this._downsampleCanvas;
+    const dsCtx = this._downsampleCtx;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this._sceneTex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas2D);
+    if (dsCanvas && dsCtx) {
+      dsCtx.clearRect(0, 0, qW, qH);
+      dsCtx.drawImage(sourceCanvas2D, 0, 0, qW, qH);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, dsCanvas);
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas2D);
+    }
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
+    gl.disable(gl.BLEND);
     gl.bindVertexArray(this._vao);
 
-    // Pass 1: Bright extract -> half-res FBO A
+    // Pass 1: Bright extract -> quarter-res FBO A
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._fboA);
-    gl.viewport(0, 0, this._halfWidth, this._halfHeight);
+    gl.viewport(0, 0, qW, qH);
     gl.useProgram(this._progExtract);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this._sceneTex);
     gl.uniform1i(this._uniforms.extractScene, 0);
-    gl.uniform2f(this._uniforms.extractTexel, 1 / srcW, 1 / srcH);
+    gl.uniform2f(this._uniforms.extractTexel, 1 / qW, 1 / qH);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Pass 2: Horizontal blur (FBO A -> FBO B)
@@ -392,25 +461,22 @@ export class PostFxCompositor {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this._bloomTexA);
     gl.uniform1i(this._uniforms.blurTex, 0);
-    gl.uniform2f(this._uniforms.blurOffset, 1 / this._halfWidth, 0);
+    gl.uniform2f(this._uniforms.blurOffset, 1 / qW, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Pass 3: Vertical blur (FBO B -> FBO A)
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._fboA);
     gl.bindTexture(gl.TEXTURE_2D, this._bloomTexB);
-    gl.uniform2f(this._uniforms.blurOffset, 0, 1 / this._halfHeight);
+    gl.uniform2f(this._uniforms.blurOffset, 0, 1 / qH);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    // Pass 4: Final composite + frost/danger edge vignette -> default framebuffer
+    // Pass 4: Transparent additive bloom + frost/danger perimeter vignette -> default framebuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, srcW, srcH);
+    gl.viewport(0, 0, outW, outH);
     gl.useProgram(this._progComposite);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this._sceneTex);
-    gl.uniform1i(this._uniforms.compScene, 0);
-    gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this._bloomTexA);
-    gl.uniform1i(this._uniforms.compBloom, 1);
+    gl.uniform1i(this._uniforms.compBloom, 0);
     gl.uniform1f(this._uniforms.compIntensity, intensity);
     gl.uniform1f(this._uniforms.compFrost, frostPulse);
     gl.uniform1f(this._uniforms.compDanger, dangerPulse);
@@ -420,16 +486,15 @@ export class PostFxCompositor {
     return true;
   }
 
-  _renderFallback2D(sourceCanvas2D, frostPulse, dangerPulse) {
+  _renderFallback2D(_sourceCanvas2D, frostPulse, dangerPulse) {
     const ctx = this._fallbackCtx2d;
     if (!ctx || !this.canvas) return false;
 
-    const w = this.canvas.width || this._pixelWidth;
-    const h = this.canvas.height || this._pixelHeight;
+    const w = this.canvas.width || this._outWidth;
+    const h = this.canvas.height || this._outHeight;
     if (w <= 0 || h <= 0) return false;
 
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(sourceCanvas2D, 0, 0, w, h);
 
     if (frostPulse > 0.01 && typeof ctx.createRadialGradient === 'function') {
       const grad = ctx.createRadialGradient(w * 0.5, h * 0.5, Math.min(w, h) * 0.35, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
@@ -468,6 +533,8 @@ export class PostFxCompositor {
       if (this._progBlur) gl.deleteProgram(this._progBlur);
       if (this._progComposite) gl.deleteProgram(this._progComposite);
     }
+    this._downsampleCanvas = null;
+    this._downsampleCtx = null;
     this._ready = false;
   }
 }
