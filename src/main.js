@@ -325,6 +325,7 @@ async function bootApplication() {
   // Top Bar Elements
   const elWave = document.getElementById('wave-value');
   const elPhasePill = document.getElementById('phase-pill');
+  const elFpsPill = document.getElementById('fps-pill');
   const elGold = document.getElementById('gold-value');
   const elLives = document.getElementById('lives-value');
   const elEssence = document.getElementById('essence-value');
@@ -342,6 +343,7 @@ async function bootApplication() {
 
   const topTextCache = new WeakMap();
   const topClassCache = new WeakMap();
+  let lastFpsUiUpdateMs = -Infinity;
 
   function setCachedText(el, str) {
     if (!el) return;
@@ -359,7 +361,7 @@ async function bootApplication() {
     }
   }
 
-  function updateTopBar() {
+  function updateTopBar(nowMs = performance.now()) {
     setCachedText(elWave, `WAVE ${sim.wave}`);
 
     if (sim.phase === 'gameover') {
@@ -372,6 +374,18 @@ async function bootApplication() {
     } else {
       setCachedText(elPhasePill, `PREP ${sim.prepTimer.toFixed(1)}s`);
       setCachedClass(elPhasePill, 'phase-pill phase-prep');
+    }
+
+    if (elFpsPill && nowMs - lastFpsUiUpdateMs >= 250) {
+      lastFpsUiUpdateMs = nowMs;
+      const stats = getFrameStats();
+      const fpsVal = Math.round(stats.fps || 60);
+      setCachedText(elFpsPill, `${fpsVal} FPS`);
+      const fpsCls = fpsVal < 30 ? 'fps-pill is-low' : (fpsVal < 50 ? 'fps-pill is-warn' : 'fps-pill');
+      setCachedClass(elFpsPill, fpsCls);
+      if (stats.sampleCount > 0) {
+        elFpsPill.title = `Live Frame Rate: ${stats.fps.toFixed(1)} FPS (avg ${stats.avgMs.toFixed(1)}ms, p95 ${stats.p95Ms.toFixed(1)}ms)`;
+      }
     }
 
     setCachedText(elGold, String(Math.floor(sim.gold)));
@@ -1020,7 +1034,7 @@ async function bootApplication() {
     uiState.forceRetargetArmed = inputController.forceRetargetArmed;
     uiState.isMuted = soundDirector.isMuted();
 
-    updateTopBar();
+    updateTopBar(nowMs);
     portraitMinimap.update(sim, uiState, simTimeSec);
     commandCard.update(sim, uiState);
 

@@ -533,7 +533,7 @@ export class PortraitMinimapController {
       this._setStat(1, 'TOTAL DMG', formatCompactNum(tower.totalDamage));
       this._setStat(2, 'LIVE DPS', `${formatCompactNum(tower.currentDps || 0)}/s`);
       this._setStat(3, 'RANGE', `${stats.range.toFixed(1)}t`);
-      this._setStat(4, 'ATK SPEED', `${(1 / stats.cd).toFixed(2)}/s`);
+      this._setStat(4, 'ATK SPD', `${(1 / stats.cd).toFixed(2)}/s`);
       this._setStat(
         5,
         'HIT / CD',
@@ -643,10 +643,10 @@ export class PortraitMinimapController {
       this._setText(this.elTypeText, stats.attackType);
       this._setClass(this.elTypeBadge, `type-badge type-${stats.attackType.toLowerCase()}`);
 
-      this._setStat(0, 'BUILD COST', `${stats.cost}g`);
+      this._setStat(0, 'COST', `${stats.cost}g`);
       this._setStat(1, 'DAMAGE', `${stats.dmg}`);
       this._setStat(2, 'RANGE', `${stats.range.toFixed(1)}t`);
-      this._setStat(3, 'ATK SPEED', `${(1 / stats.cd).toFixed(2)}/s`);
+      this._setStat(3, 'ATK SPD', `${(1 / stats.cd).toFixed(2)}/s`);
       this._setStat(4, 'SPLASH', stats.splash ? `${stats.splash.toFixed(2)}t` : 'Single');
       this._setStat(5, 'FOOTPRINT', '2×2 Tile');
 

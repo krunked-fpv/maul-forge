@@ -183,6 +183,38 @@ button {
   border: 1px solid #ef4444;
 }
 
+.fps-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 68px;
+  min-width: 68px;
+  padding: 0 6px;
+  background: var(--bg-panel-deep);
+  border: 1px solid var(--border-obsidian);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--emerald);
+  flex-shrink: 0;
+}
+
+.fps-pill.is-warn {
+  color: var(--amber);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.fps-pill.is-low {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
 /* Resource Telemetry Pills */
 .top-resources {
   flex: 1 1 auto;
@@ -1296,6 +1328,31 @@ button {
   min-height: 16px;
 }
 
+/* Compact Desktop Top Bar (1280px fit with live FPS pill) */
+@media (max-width: 1340px) {
+  #top-bar {
+    gap: 5px;
+    padding: 0 8px;
+  }
+
+  .top-group {
+    gap: 4px;
+  }
+
+  .res-pill {
+    padding: 0 7px;
+    gap: 4px;
+  }
+
+  .top-btn {
+    padding: 0 7px;
+  }
+
+  #volume-slider {
+    width: 44px;
+  }
+}
+
 /* Tablet Breakpoint */
 @media (max-width: 1120px) {
   .brand-title,
@@ -1400,9 +1457,17 @@ button {
     padding: 1px 4px;
   }
 
+  .fps-pill {
+    height: 24px;
+    width: 60px;
+    min-width: 60px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
   /* Compact Mobile 2-Tier Bottom Deck */
   #wc3-deck {
-    grid-template-columns: 1fr 112px;
+    grid-template-columns: 1fr 94px;
     grid-template-rows: 96px 162px;
     gap: 5px;
     padding: 5px 6px;
@@ -1428,14 +1493,14 @@ button {
   }
 
   .portrait-column {
-    flex: 0 0 68px;
+    flex: 0 0 60px;
     gap: 3px;
   }
 
   #portrait-frame,
   #portrait-canvas {
-    width: 66px;
-    height: 66px;
+    width: 58px;
+    height: 58px;
   }
 
   .portrait-tier-badge {
@@ -1445,18 +1510,20 @@ button {
   }
 
   .priority-pill {
-    width: 66px;
+    width: 58px;
     height: 18px;
-    font-size: 9px;
+    padding: 0 2px;
+    font-size: 8.5px;
   }
 
   .insp-header {
     height: 24px;
+    gap: 3px;
     padding-bottom: 2px;
   }
 
   .insp-name {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .insp-subtitle {
@@ -1464,10 +1531,11 @@ button {
   }
 
   .type-badge {
-    height: 20px;
-    min-width: 54px;
-    padding: 0 5px;
-    font-size: 9px;
+    height: 18px;
+    min-width: 44px;
+    padding: 0 4px;
+    font-size: 8.5px;
+    letter-spacing: 0.03em;
   }
 
   .insp-stats-grid {
@@ -1484,16 +1552,19 @@ button {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    padding: 0 5px;
-    gap: 4px;
+    padding: 0 4px;
+    gap: 3px;
   }
 
   .stat-k {
-    font-size: 8px;
+    font-size: 7.5px;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
   }
 
   .stat-v {
-    font-size: 10px;
+    font-size: 9.5px;
+    flex-shrink: 0;
   }
 
   .insp-badges-row {
@@ -1543,6 +1614,13 @@ button {
   .cam-btn {
     width: 26px;
     height: 26px;
+  }
+}
+
+/* Narrow Mobile Portrait (< 480px) */
+@media (max-width: 480px) {
+  .fps-pill {
+    display: none;
   }
 }
 
