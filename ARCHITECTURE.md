@@ -51,7 +51,7 @@ All layers import frozen enums & contracts from src/contracts/types.js
   - **Zero `ctx.shadowBlur` in inner entity loops**: Glows, runes, and ice prisms use layered low-alpha strokes/fills (`globalCompositeOperation = 'lighter'` where appropriate) to eliminate GPU Gaussian blur stalls.
   - **Cached Terrain Base**: Carved runic slate tiles, bevel borders, and ley-channel grooves cache onto an offscreen canvas invalidated only on zoom/resize.
   - **Ring-Buffered VFX**: Particles (`MAX_PARTICLES = 2048` Struct-of-Arrays) and Terrain Decals (`MAX_DECALS = 256` scorch/acid/frost/crack/slag) use fixed ring buffers with zero GC allocations.
-  - **WebGL2 Half-Res Post-FX (`src/render/postfx-webgl.js`)**: Composites `#battle-canvas` onto `#postfx-canvas` with soft bloom highlight extraction and frost/danger edge vignettes. Automatically handles `webglcontextlost` and degrades cleanly to direct Canvas2D display if WebGL2 is unavailable.
+  - **WebGL2 Transparent Post-FX Overlay (`src/render/postfx-webgl.js`)**: Downsamples `#battle-canvas` to a quarter-resolution scratch canvas (`64..320` x `64..200`) uploaded via `gl.texSubImage2D`, runs half-res separable bloom passes, and renders a transparent premultiplied overlay (`alpha: true`, `premultipliedAlpha: true`) onto `#postfx-canvas` at half CSS resolution with soft additive bloom and frost/danger edge vignettes—preserving native DPR `#battle-canvas` sharpness underneath. Automatically handles `webglcontextlost` and degrades cleanly to transparent radial edge gradients if WebGL2 is unavailable.
 
 ## 4. Procedural Web Audio DSP Graph
 - Lazy `AudioContext` instantiation strictly on user gesture (`unlock()`).
