@@ -514,28 +514,89 @@ export class TerrainRenderer {
       ctx.globalAlpha = alpha;
 
       if (kind === 0) {
-        // Scorch crater
-        ctx.fillStyle = 'rgba(6, 7, 10, 0.68)';
+        // Textured soot-ring & radiating crack fissures (lightweight, zero smudge)
+        ctx.fillStyle = 'rgba(8, 10, 16, 0.24)';
         ctx.beginPath();
         drawEllipse(ctx, pos.x, pos.y, rx, ry);
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(24, 14, 10, 0.55)';
+        // Broken crater rim stroke
+        setDash(ctx, [
+          Math.max(2, rx * 0.26),
+          Math.max(1.5, rx * 0.16),
+          Math.max(1.5, rx * 0.14),
+          Math.max(2, rx * 0.22),
+        ]);
+        if ('lineDashOffset' in ctx) {
+          ctx.lineDashOffset = seed * rx * 2.5;
+        }
+        ctx.strokeStyle = 'rgba(28, 22, 18, 0.36)';
+        ctx.lineWidth = Math.max(1.1, scale * 0.045);
         ctx.beginPath();
-        drawEllipse(ctx, pos.x, pos.y, rx * 0.62, ry * 0.62);
-        ctx.fill();
+        drawEllipse(ctx, pos.x, pos.y, rx * 0.78, ry * 0.78);
+        ctx.stroke();
+        setDash(ctx, []);
+        if ('lineDashOffset' in ctx) {
+          ctx.lineDashOffset = 0;
+        }
 
+        // Jagged hairline fissures radiating from blast center
+        ctx.strokeStyle = 'rgba(10, 12, 18, 0.52)';
+        ctx.lineWidth = Math.max(0.9, scale * 0.032);
+        ctx.beginPath();
+        for (let r = 0; r < 6; r++) {
+          const ang = seed * Math.PI * 2 + r * 1.047 + ((r & 1) ? 0.18 : -0.14);
+          const bend = ((r % 3) - 1) * 0.22;
+          const reach = 0.76 + ((r * 37 + Math.round(seed * 19)) % 5) * 0.05;
+          const midX = pos.x + Math.cos(ang + bend) * rx * 0.44;
+          const midY = pos.y + Math.sin(ang + bend) * ry * 0.44;
+          const endX = pos.x + Math.cos(ang - bend * 0.65) * rx * reach;
+          const endY = pos.y + Math.sin(ang - bend * 0.65) * ry * reach;
+          ctx.moveTo(pos.x + Math.cos(ang) * rx * 0.1, pos.y + Math.sin(ang) * ry * 0.1);
+          ctx.lineTo(midX, midY);
+          ctx.lineTo(endX, endY);
+        }
+        ctx.stroke();
+
+        // Glowing orange ember veins & specks while crater is fresh
         const glow = clamp(life / maxLife, 0, 1);
-        if (glow > 0.35) {
-          ctx.strokeStyle = `rgba(249, 115, 22, ${(glow - 0.35) * 0.7})`;
-          ctx.lineWidth = Math.max(1, scale * 0.04);
+        if (glow > 0.25) {
+          const emberStrength = (glow - 0.25) / 0.75;
+          ctx.strokeStyle = `rgba(249, 115, 22, ${(emberStrength * 0.65).toFixed(3)})`;
+          ctx.lineWidth = Math.max(0.9, scale * 0.028);
           ctx.beginPath();
-          for (let r = 0; r < 5; r++) {
-            const ang = seed * Math.PI * 2 + r * 1.25;
-            ctx.moveTo(pos.x, pos.y);
-            ctx.lineTo(pos.x + Math.cos(ang) * rx * 0.7, pos.y + Math.sin(ang) * ry * 0.7);
+          for (let r = 0; r < 4; r++) {
+            const ang = seed * Math.PI * 2 + r * 1.57 + 0.25;
+            ctx.moveTo(pos.x + Math.cos(ang) * rx * 0.08, pos.y + Math.sin(ang) * ry * 0.08);
+            ctx.lineTo(pos.x + Math.cos(ang + 0.14) * rx * 0.38, pos.y + Math.sin(ang + 0.14) * ry * 0.38);
           }
           ctx.stroke();
+
+          const speckR = Math.max(1.1, scale * 0.042);
+          ctx.fillStyle = `rgba(251, 146, 60, ${(emberStrength * 0.85).toFixed(3)})`;
+          ctx.beginPath();
+          for (let e = 0; e < 5; e++) {
+            const ang = seed * Math.PI * 2 + e * 1.256 + 0.4;
+            const dist = 0.24 + ((e * 29 + Math.floor(seed * 17)) % 5) * 0.12;
+            const ex = pos.x + Math.cos(ang) * rx * dist;
+            const ey = pos.y + Math.sin(ang) * ry * dist;
+            ctx.moveTo(ex + speckR, ey);
+            ctx.arc(ex, ey, speckR, 0, Math.PI * 2);
+          }
+          ctx.fill();
+
+          const hotR = Math.max(0.8, scale * 0.025);
+          ctx.fillStyle = `rgba(253, 224, 71, ${(emberStrength * 0.75).toFixed(3)})`;
+          ctx.beginPath();
+          for (let e = 0; e < 3; e++) {
+            const ang = seed * Math.PI * 2 + e * 2.094 + 0.4;
+            const dist = 0.2 + ((e * 19 + Math.floor(seed * 11)) % 4) * 0.11;
+            const ex = pos.x + Math.cos(ang) * rx * dist;
+            const ey = pos.y + Math.sin(ang) * ry * dist;
+            ctx.moveTo(ex + hotR, ey);
+            ctx.arc(ex, ey, hotR, 0, Math.PI * 2);
+          }
+          ctx.fill();
         }
       } else if (kind === 1) {
         // Acid corrosion pool
