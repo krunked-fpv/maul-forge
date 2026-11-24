@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#d4a238">
+  <meta name="description" content="Maul-Forge: Bastion TD — Zero-backend 2.5D Warcraft III style mazing tower defense with hybrid elemental fusions and offline WebAPK support.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Maul-Forge: Bastion TD</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./styles/hud.css">
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body>
+  <div id="app-shell">
+    <!-- Top Obsidian Command Bar -->
+    <header id="top-bar" role="banner">
+      <div class="top-group top-brand">
+        <div class="brand-crest" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12,2 21,8 18,21 6,21 3,8" />
+            <polygon points="12,6 16,12 12,18 8,12" fill="currentColor" stroke="none" />
+          </svg>
+        </div>
+        <span class="brand-title">MAUL-FORGE</span>
+        <div class="wave-badge" id="wave-badge">
+          <span class="wave-label" id="wave-value">WAVE 0</span>
+          <span class="phase-pill phase-prep" id="phase-pill">PREP 12.0s</span>
+        </div>
+      </div>
+
+      <div class="top-group top-resources" aria-label="Sanctuary Resources">
+        <div class="res-pill res-gold" title="Gold (Spend on Towers, Upgrades &amp; Fusions)">
+          <span class="res-icon" aria-hidden="true">◆</span>
+          <span class="res-key">GOLD</span>
+          <span class="res-val" id="gold-value">260</span>
+        </div>
+        <div class="res-pill res-lives" title="Sanctuary Nexus Lives">
+          <span class="res-icon" aria-hidden="true">♥</span>
+          <span class="res-key">LIVES</span>
+          <span class="res-val" id="lives-value">30/30</span>
+        </div>
+        <div class="res-pill res-essence" title="Fusion Essence (Earned from Bosses, substitutes for adjacent catalyst)">
+          <span class="res-icon" aria-hidden="true">✦</span>
+          <span class="res-key">ESSENCE</span>
+          <span class="res-val" id="essence-value">1</span>
+        </div>
+        <div class="res-pill res-score" title="Current Score and Best High Score">
+          <span class="res-key">SCORE</span>
+          <span class="res-val" id="score-value">0</span>
+          <span class="res-sub" id="highscore-value">HI 0</span>
+        </div>
+      </div>
+
+      <div class="top-group top-actions">
+        <button type="button" class="top-btn" id="btn-speed" title="Cycle Simulation Speed [D]">1x</button>
+        <button type="button" class="top-btn" id="btn-builder-mode" title="Toggle Builder Mode [A]">Spirit</button>
+        <div class="audio-group">
+          <button type="button" class="top-btn" id="btn-mute" title="Toggle Audio Mute [M / C]">Audio On</button>
+          <input type="range" id="volume-slider" min="0" max="100" value="70" aria-label="Master Volume" title="Master Volume">
+        </div>
+        <button type="button" class="top-btn" id="btn-matrix" title="5x6 Attack vs Armor Multiplier Matrix">Matrix</button>
+        <button type="button" class="top-btn" id="btn-blueprint" title="Share #maze= Link &amp; Blueprint JSON [X]">Vault / Share</button>
+        <div class="install-pill is-hidden" id="install-pill">
+          <button type="button" class="top-btn top-btn-gold" id="btn-install-app" title="Install Bastion App for offline play">Install Bastion App</button>
+          <button type="button" class="top-btn-dismiss" id="btn-install-dismiss" aria-label="Dismiss Install Prompt" title="Dismiss">×</button>
+        </div>
+        <button type="button" class="top-btn top-btn-danger" id="btn-new-run" title="Start New Run">New Run</button>
+      </div>
+    </header>
+
+    <!-- Main 2.5D Battlefield Viewport -->
+    <main id="battle-stage">
+      <canvas id="battle-canvas"></canvas>
+      <canvas id="postfx-canvas" aria-hidden="true"></canvas>
+
+      <!-- Non-reflowing Placement Warning Banner -->
+      <div id="placement-warning-banner" class="stage-banner warning-banner" role="status" aria-live="polite">
+        <span class="banner-sigil" aria-hidden="true">▲</span>
+        <span id="placement-warning-text">Cannot Block Creep Path!</span>
+      </div>
+
+      <!-- Wave / Action Toast Banner -->
+      <div id="wave-toast-banner" class="stage-banner toast-banner" role="status" aria-live="polite">
+        <span id="wave-toast-text"></span>
+      </div>
+
+      <!-- Camera Quick Controls -->
+      <div id="camera-controls" aria-label="Camera Controls">
+        <button type="button" class="cam-btn" id="btn-zoom-in" title="Zoom In">+</button>
+        <button type="button" class="cam-btn" id="btn-zoom-out" title="Zoom Out">−</button>
+        <button type="button" class="cam-btn" id="btn-zoom-reset" title="Reset Camera View">⌖</button>
+      </div>
+
+      <!-- Mobile 2-Step Tap-Preview / Tap-Confirm Build Pill -->
+      <div id="mobile-confirm-pill" class="is-hidden" role="region" aria-label="Confirm Tower Placement">
+        <div class="confirm-meta">
+          <span class="confirm-title" id="confirm-build-title">Watchtower Ballista</span>
+          <span class="confirm-sub" id="confirm-build-sub">+0.0s Travel</span>
+        </div>
+        <button type="button" class="confirm-btn-ok" id="btn-confirm-build">Confirm Build (60g)</button>
+        <button type="button" class="confirm-btn-cancel" id="btn-cancel-build" aria-label="Cancel Build Preview">✕</button>
+      </div>
+
+      <!-- Game Over Overlay -->
+      <div id="gameover-overlay" class="is-hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+        <div class="gameover-card">
+          <div class="gameover-crest" aria-hidden="true">❖</div>
+          <h2 id="gameover-title">SANCTUARY BREACHED</h2>
+          <p class="gameover-sub">The Arcane Nexus has fallen to the tide.</p>
+          <div class="gameover-stats">
+            <div class="go-stat"><span class="go-k">Wave Reached</span><span class="go-v" id="go-wave">0</span></div>
+            <div class="go-stat"><span class="go-k">Final Score</span><span class="go-v" id="go-score">0</span></div>
+            <div class="go-stat"><span class="go-k">Best Wave</span><span class="go-v" id="go-best-wave">0</span></div>
+            <div class="go-stat"><span class="go-k">High Score</span><span class="go-v" id="go-high-score">0</span></div>
+          </div>
+          <button type="button" class="primary-gold-btn" id="btn-gameover-reset">Forge New Bastion</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Rigid 3-Panel WC3 Tactile Command Deck -->
+    <footer id="wc3-deck" aria-label="Tactile Command Deck">
+      <!-- Left Panel: Interactive Tactical Minimap -->
+      <section id="minimap-panel" aria-label="Tactical Minimap">
+        <div class="panel-header">
+          <span class="panel-title">SANCTUARY MAP</span>
+          <span class="panel-meta" id="minimap-meta">32×22 · 0.0ms</span>
+        </div>
+        <div class="minimap-frame">
+          <canvas id="minimap-canvas" width="256" height="176"></canvas>
+        </div>
+        <div class="minimap-legend">
+          <span class="leg-item"><i class="leg-dot leg-gate"></i>Rifts</span>
+          <span class="leg-item"><i class="leg-dot leg-shrine"></i>Shrine</span>
+          <span class="leg-item"><i class="leg-dot leg-nexus"></i>Nexus</span>
+          <span class="leg-item"><i class="leg-dot leg-creep"></i>Creeps</span>
+        </div>
+      </section>
+
+      <!-- Center Panel: Live 112x112 Portrait + Telemetry Inspector -->
+      <section id="inspector-panel" aria-label="Entity Telemetry">
+        <div class="portrait-column">
+          <div id="portrait-frame">
+            <canvas id="portrait-canvas" width="112" height="112"></canvas>
+            <span class="portrait-tier-badge" id="portrait-tier-badge">BASTION</span>
+          </div>
+          <button type="button" class="priority-pill is-passive" id="portrait-priority-pill" title="Click to cycle Target Priority [A]">Priority: First</button>
+        </div>
+
+        <div id="telemetry-panel">
+          <div class="insp-header">
+            <div class="insp-title-wrap">
+              <div class="insp-name" id="insp-name">Obsidian Sanctuary</div>
+              <div class="insp-subtitle" id="insp-subtitle">Select a Tower, Creep, or Build Hotkey</div>
+            </div>
+            <button type="button" class="type-badge" id="insp-type-badge" title="Click or hover to inspect 5×6 Attack vs Armor Multiplier Matrix">
+              <span id="insp-type-text">MATRIX</span>
+            </button>
+          </div>
+
+          <div class="insp-stats-grid" id="insp-stats-grid">
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-0">TOWERS</span>
+              <span class="stat-v" id="stat-v-0">0</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-1">ACTIVE CREEPS</span>
+              <span class="stat-v" id="stat-v-1">0</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-2">FLOW SOLVE</span>
+              <span class="stat-v" id="stat-v-2">0.0ms</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-3">BEST WAVE</span>
+              <span class="stat-v" id="stat-v-3">0</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-4">MODE</span>
+              <span class="stat-v" id="stat-v-4">Spirit</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-k" id="stat-k-5">NEXT BONUS</span>
+              <span class="stat-v" id="stat-v-5">+24g</span>
+            </div>
+          </div>
+
+          <div class="insp-badges-row" id="insp-badges-row">
+            <span class="status-chip chip-muted" id="insp-empty-chip">Tip: Q/W/E/R/F/V builds 2×2 towers · Right-click cancels/rallies</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Strict 4x3 Hotkey Command Card -->
+      <section id="command-card-panel" aria-label="Command Card">
+        <div class="command-tooltip-bar" id="command-tooltip-bar">
+          <span class="tt-name" id="tt-name">Command Deck</span>
+          <span class="tt-desc" id="tt-desc">Hover or tap a slot · Hotkeys Q W E R / A S D F / Z X C V</span>
+        </div>
+        <div class="command-grid" id="command-grid" role="grid"></div>
+      </section>
+    </footer>
+  </div>
+
+  <!-- 5x6 Attack vs Armor Multiplier Matrix Popover -->
+  <div id="matrix-popover" class="popover-panel is-hidden" role="dialog" aria-label="Attack vs Armor Multiplier Matrix">
+    <div class="popover-head">
+      <span class="popover-title">5×6 ATTACK VS ARMOR MATRIX</span>
+      <button type="button" class="modal-close-btn" id="btn-close-matrix" aria-label="Close Matrix">×</button>
+    </div>
+    <div class="matrix-table-wrap" id="matrix-table-wrap"></div>
+    <div class="matrix-footnotes">
+      <span><strong>Shatter:</strong> Siege vs Deep Freeze deals <strong>3.0×</strong> AoE</span>
+      <span><strong>Acid:</strong> −2.5 Armor/stack (max 10)</span>
+      <span><strong>Solar Flare:</strong> 2.5× vs Ethereal &amp; Swarms</span>
+    </div>
+  </div>
+
+  <!-- Blueprint JSON & #maze= Cartridge Share Modal -->
+  <div id="blueprint-modal" class="modal-backdrop is-hidden" role="dialog" aria-modal="true" aria-labelledby="bp-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="bp-modal-title">BLUEPRINT VAULT &amp; #MAZE= CARTRIDGE</h3>
+        <button type="button" class="modal-close-btn" id="btn-close-blueprint" aria-label="Close Vault Modal">×</button>
+      </div>
+
+      <div class="bp-section">
+        <label class="bp-label" for="cartridge-link-input">Shareable Subpath-Safe <code>#maze=</code> Cartridge Link</label>
+        <div class="bp-row">
+          <input type="text" id="cartridge-link-input" spellcheck="false" autocomplete="off" placeholder="#maze=...">
+          <button type="button" class="bp-btn bp-btn-gold" id="btn-copy-cartridge">Copy Link</button>
+          <button type="button" class="bp-btn" id="btn-load-cartridge">Load Hash</button>
+        </div>
+      </div>
+
+      <div class="bp-section">
+        <label class="bp-label" for="blueprint-json-text">Deterministic Blueprint / Checkpoint JSON</label>
+        <textarea id="blueprint-json-text" rows="10" spellcheck="false"></textarea>
+        <div class="bp-actions">
+          <button type="button" class="bp-btn" id="btn-export-refresh">Refresh Export</button>
+          <button type="button" class="bp-btn" id="btn-copy-json">Copy JSON</button>
+          <button type="button" class="bp-btn bp-btn-gold" id="btn-import-json">Import &amp; Load</button>
+          <button type="button" class="bp-btn bp-btn-danger" id="btn-modal-new-run">Reset Run</button>
+        </div>
+      </div>
+
+      <div class="bp-status" id="blueprint-status" role="status" aria-live="polite">
+        Triple-replicated across LocalStorage, IndexedDB &amp; krunked-cookie-vault-v1.
+      </div>
+    </div>
+  </div>
+</body>
+</html>
