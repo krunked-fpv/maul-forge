@@ -1,0 +1,25 @@
+{
+  "name": "Maul-Forge: Bastion TD",
+  "short_name": "MaulForge",
+  "description": "Zero-backend 2.5D Warcraft III style mazing tower defense with hybrid elemental fusions and offline WebAPK support.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0d12",
+  "theme_color": "#d4a238",
+  "icons": [
+    {
+      "src": "./assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
