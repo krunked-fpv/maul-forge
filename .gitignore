@@ -1,0 +1,22 @@
+# Transient backups & cookies
+*.bak
+*.cookie_bak
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies, build & temp directories
+node_modules/
+tmp/
+.scratch/
+.worktrees/
+_site/
+
+# Logs, coverage & browser/test dumps
+*.log
+coverage/
+.playwright*
+playwright-report/
+test-results/
